@@ -1,41 +1,77 @@
-# Python Backend Integration Guide
+# FraudGuard ML API
 
-This document outlines how to integrate a Python-based fraud detection backend with the FraudGuard frontend application.
+A FastAPI-based fraud detection service that provides machine learning-powered fraud prediction for financial transactions.
 
-## Overview
+## Features
 
-The FraudGuard frontend is designed to work with an external Python backend that provides advanced fraud detection capabilities using machine learning models. The integration follows a microservices architecture where the Node.js backend handles user management and data persistence, while the Python backend focuses on fraud prediction.
+- **Real-time Fraud Detection**: Analyze transactions and predict fraud probability
+- **Batch Processing**: Handle multiple transactions in a single request
+- **Risk Assessment**: Multi-factor risk scoring with detailed risk factors
+- **RESTful API**: Clean, well-documented API endpoints
+- **Production Ready**: Docker support, health checks, and comprehensive error handling
 
-## Python Backend Requirements
+## Quick Start
 
-### API Endpoint Specification
+### Using Python
 
-The Python backend should expose a POST endpoint at `/predict` that accepts transaction data and returns fraud predictions.
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-#### Request Format
-```http
-POST /predict
-Content-Type: application/json
-```
+2. **Run the API**
+   ```bash
+   python main.py
+   ```
 
+3. **Access the API**
+   - API: http://localhost:8000
+   - Documentation: http://localhost:8000/docs
+   - Alternative docs: http://localhost:8000/redoc
+
+### Using Docker
+
+1. **Build and Run**
+   ```bash
+   docker-compose up --build
+   ```
+
+2. **Access the API**
+   - API: http://localhost:8000
+
+## API Endpoints
+
+### Core Endpoints
+
+- `GET /` - API information
+- `GET /health` - Health check
+- `GET /model/info` - Model information and capabilities
+- `POST /predict` - Fraud prediction (main endpoint)
+
+### Fraud Prediction
+
+**Endpoint**: `POST /predict`
+
+**Request Format**:
 ```json
 {
   "transactions": [
     {
       "amount": 1250.00,
       "currency": "USD",
-      "merchantId": "AMAZON_001", 
+      "merchantId": "AMAZON_001",
       "paymentMethod": "credit_card",
       "customerEmail": "alice.johnson@gmail.com",
       "ipAddress": "192.168.1.1",
       "deviceId": "DEV_001",
-      "description": "Electronics purchase"
+      "description": "Electronics purchase",
+      "timestamp": "2024-01-15T14:30:00Z"
     }
   ]
 }
 ```
 
-#### Response Format
+**Response Format**:
 ```json
 {
   "predictions": [
@@ -43,145 +79,95 @@ Content-Type: application/json
       "isFraud": false,
       "confidence": 0.85,
       "riskScore": 0.23,
-      "riskLevel": "low"
+      "riskLevel": "low",
+      "riskFactors": ["Moderate transaction amount"],
+      "processingTime": 12.5
     }
-  ]
+  ],
+  "totalProcessed": 1,
+  "averageRiskScore": 0.23,
+  "highRiskCount": 0
 }
 ```
 
-### Required Features
+## Risk Assessment Factors
 
-1. **CORS Support**: Enable cross-origin requests from the frontend application
-2. **Batch Processing**: Handle multiple transactions in a single request
-3. **Error Handling**: Return appropriate HTTP status codes and error messages
-4. **Authentication**: Optional - can integrate with JWT tokens if needed
+The fraud detection engine evaluates multiple risk factors:
 
-### Sample Python Implementation (FastAPI)
+### Transaction Amount
+- Very high amounts (>$50,000): High risk
+- High amounts (>$10,000): Medium-high risk
+- Moderate amounts (>$1,000): Low-medium risk
+- Very small amounts (<$1): Suspicious (testing)
 
-```python
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
-import numpy as np
+### Payment Methods
+- Digital wallets: Higher risk
+- Credit cards: Medium risk
+- Debit cards: Lower risk
+- Bank transfers: Low risk
+- Cash: Lowest risk
 
-app = FastAPI(title="FraudGuard ML API")
+### Email Analysis
+- Temporary email domains: High risk
+- Free email providers: Low risk
+- Short usernames: Medium risk
+- Number-heavy usernames: Low risk
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure as needed
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+### Merchant Categories
+- High-risk: Crypto, gambling, adult content
+- Medium-risk: Electronics, jewelry, travel
+- New/unknown merchants: Higher risk
 
-class Transaction(BaseModel):
-    amount: float
-    currency: str
-    merchantId: str
-    paymentMethod: str
-    customerEmail: str
-    ipAddress: str = None
-    deviceId: str = None
-    description: str = None
+### Temporal Patterns
+- Late night transactions (before 6 AM, after 11 PM): Higher risk
+- Weekend transactions: Slightly higher risk
 
-class TransactionRequest(BaseModel):
-    transactions: List[Transaction]
+### Currency Risk
+- Certain currencies may have higher associated risk
+- Based on regional fraud patterns
 
-class FraudPrediction(BaseModel):
-    isFraud: bool
-    confidence: float
-    riskScore: float
-    riskLevel: str
+## Testing
 
-class PredictionResponse(BaseModel):
-    predictions: List[FraudPrediction]
+Run the comprehensive test suite:
 
-@app.post("/predict", response_model=PredictionResponse)
-async def predict_fraud(request: TransactionRequest):
-    try:
-        predictions = []
-        
-        for transaction in request.transactions:
-            # Your ML model prediction logic here
-            risk_score = calculate_fraud_risk(transaction)
-            confidence = min(max(risk_score * 2, 0.5), 0.99)
-            is_fraud = risk_score > 0.7
-            risk_level = "high" if risk_score > 0.7 else "medium" if risk_score > 0.4 else "low"
-            
-            predictions.append(FraudPrediction(
-                isFraud=is_fraud,
-                confidence=confidence,
-                riskScore=risk_score,
-                riskLevel=risk_level
-            ))
-        
-        return PredictionResponse(predictions=predictions)
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-def calculate_fraud_risk(transaction: Transaction) -> float:
-    """
-    Placeholder fraud detection algorithm.
-    Replace with your actual ML model.
-    """
-    risk = 0.0
-    
-    # Amount-based risk
-    if transaction.amount > 10000:
-        risk += 0.4
-    elif transaction.amount > 5000:
-        risk += 0.3
-    elif transaction.amount > 1000:
-        risk += 0.2
-    else:
-        risk += 0.1
-    
-    # Payment method risk
-    if transaction.paymentMethod == "digital_wallet":
-        risk += 0.2
-    elif transaction.paymentMethod == "bank_transfer":
-        risk += 0.1
-    else:
-        risk += 0.15
-    
-    # Email domain risk
-    if transaction.customerEmail and "@" in transaction.customerEmail:
-        domain = transaction.customerEmail.split("@")[1]
-        if "tempmail" in domain or "10minute" in domain:
-            risk += 0.3
-    
-    # Add some randomness to simulate ML model variability
-    risk += np.random.uniform(0, 0.1)
-    
-    return min(risk, 1.0)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+```bash
+python test_api.py
 ```
 
-## Integration with FraudGuard Frontend
+The test suite includes:
+- Health check validation
+- Single transaction prediction
+- High-risk transaction detection
+- Batch processing
+- Invalid data handling
+- Performance testing
 
-### Environment Configuration
+## Configuration
 
-Add the Python backend URL to your environment variables:
+### Supported Currencies
+- USD, EUR, GBP, NGN, CAD, AUD, JPY
 
+### Supported Payment Methods
+- credit_card, debit_card, bank_transfer, digital_wallet, cash
+
+### Risk Thresholds
+- Low risk: < 0.3
+- Medium risk: 0.3 - 0.6
+- High risk: > 0.6
+
+## Integration with Node.js Backend
+
+### Environment Variables
+Add to your Node.js application:
 ```bash
 PYTHON_ML_API_URL=http://localhost:8000
 ```
 
-### Frontend Integration
-
-The FraudGuard frontend can be extended to use the Python backend by modifying the transaction processing endpoints in `server/routes.ts`:
-
-```typescript
-// Add to server/routes.ts
+### Sample Integration Code
+```javascript
 const ML_API_URL = process.env.PYTHON_ML_API_URL || "http://localhost:8000";
 
-async function callPythonML(transactions: any[]) {
+async function callFraudDetection(transactions) {
   try {
     const response = await fetch(`${ML_API_URL}/predict`, {
       method: 'POST',
@@ -197,55 +183,82 @@ async function callPythonML(transactions: any[]) {
     
     return await response.json();
   } catch (error) {
-    console.error('Python ML API call failed:', error);
-    // Fallback to local risk calculation
-    return null;
+    console.error('Fraud detection API call failed:', error);
+    throw error;
   }
 }
 ```
 
-### Deployment Considerations
+## Production Deployment
 
-1. **Docker Deployment**: Both services can be containerized and deployed together
-2. **Microservices**: Deploy Python backend as a separate service
-3. **Load Balancing**: Use a reverse proxy for production deployments
-4. **Security**: Implement proper authentication between services
+### Docker Production
+```bash
+# Build production image
+docker build -t fraudguard-ml-api .
 
-### Model Training Data Format
-
-The Python backend should expect transaction features in this format for model training:
-
-```json
-{
-  "amount": 1250.00,
-  "currency_usd": 1,
-  "currency_eur": 0, 
-  "currency_gbp": 0,
-  "currency_ngn": 0,
-  "payment_method_credit_card": 1,
-  "payment_method_debit_card": 0,
-  "payment_method_bank_transfer": 0,
-  "payment_method_digital_wallet": 0,
-  "email_domain_suspicious": 0,
-  "amount_category": 2,
-  "hour_of_day": 14,
-  "day_of_week": 3
-}
+# Run with production settings
+docker run -d \
+  --name fraudguard-ml \
+  -p 8000:8000 \
+  --restart unless-stopped \
+  fraudguard-ml-api
 ```
 
-## Testing
+### Environment Variables
+- `PYTHONPATH`: Set to `/app`
+- `PYTHONDONTWRITEBYTECODE`: Set to `1`
+- `PYTHONUNBUFFERED`: Set to `1`
 
-Use the sample data provided in the application to test the Python backend integration:
+### Health Monitoring
+The API includes built-in health checks:
+- HTTP endpoint: `GET /health`
+- Docker health check: Automatic container health monitoring
 
-1. Load sample data using the "Load Sample Data" button in the dashboard
-2. Verify predictions are being returned correctly
-3. Test error handling with invalid requests
-4. Validate CORS functionality from the frontend
+## API Documentation
 
-## Next Steps
+Once the server is running, visit:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
-1. Implement the Python FastAPI backend
-2. Add environment variable for ML API URL
-3. Modify transaction processing to call Python API
-4. Train ML models with historical transaction data
-5. Implement model versioning and A/B testing capabilities
+These provide interactive API documentation with request/response examples and the ability to test endpoints directly.
+
+## Performance
+
+- **Single Transaction**: ~10-20ms processing time
+- **Batch Processing**: ~5-10ms per transaction in batch
+- **Concurrent Requests**: Supports multiple simultaneous requests
+- **Memory Usage**: Lightweight, suitable for containerized deployment
+
+## Error Handling
+
+The API provides comprehensive error handling:
+- **400**: Bad Request (malformed JSON)
+- **422**: Validation Error (invalid data)
+- **500**: Internal Server Error
+
+All errors include detailed messages for debugging.
+
+## Logging
+
+The API includes structured logging:
+- Request/response logging
+- Error tracking
+- Performance metrics
+- Health check status
+
+## Security Considerations
+
+- **CORS**: Configured for cross-origin requests
+- **Input Validation**: Comprehensive request validation
+- **Error Handling**: Secure error messages (no sensitive data exposure)
+- **Rate Limiting**: Consider implementing for production use
+- **Authentication**: Can be extended with JWT or API key authentication
+
+## Future Enhancements
+
+- Machine learning model training pipeline
+- Real-time model updates
+- Advanced feature engineering
+- Integration with external fraud databases
+- A/B testing for model versions
+- Advanced analytics and reporting
